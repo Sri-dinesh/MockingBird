@@ -8,52 +8,139 @@ const routes = require("./routes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || "development";
 
-// Security middleware
-app.use(helmet());
-app.use(cors());
+// SECURITY MIDDLEWARE
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  })
+);
+
+// CORS configuration
+const corsOptions = {
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
+};
+app.use(cors(corsOptions));
+
 app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 
-// Disable x-powered-by header
 app.disable("x-powered-by");
 
-// Rate limiting - 30 requests per minute per IP
-const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+// Trust proxy for rate limiting behind reverse proxy
+if (NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
+// RATE LIMITING
+const translateLimiter = rateLimit({
+  windowMs: 60 * 1000,
   max: 30,
   message: {
-    error: "Too much sarcasm for now, try again in a minute!",
+    error: "Whoa, slow down! Too much sarcasm. Try again in a minute!",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  },
+  skip: (req) =>
+    NODE_ENV === "development" && process.env.DISABLE_RATE_LIMIT === "true",
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: {
+    error: "Too many requests. Please slow down.",
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use("/api", limiter);
+// REQUEST LOGGING (Development)
+if (NODE_ENV === "development") {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      const duration = Date.now() - start;
+      console.log(
+        `${req.method} ${req.path} ${res.statusCode} - ${duration}ms`
+      );
+    });
+    next();
+  });
+}
 
-// Routes
+// ROUTES
+app.use("/api", apiLimiter);
+app.use("/api/translate", translateLimiter);
+
 app.use("/api", routes);
 
-// Root endpoint
 app.get("/", (req, res) => {
   res.json({
-    status: "ok",
+    name: "MockingBird API",
     version: "1.0.0",
+    status: "operational",
+    documentation: "/api/modes",
   });
 });
 
-// 404 handler
+// ERROR HANDLING
 app.use((req, res) => {
-  res.status(404).json({ error: "Endpoint not found" });
+  res.status(404).json({
+    error: "Endpoint not found",
+    path: req.path,
+  });
 });
 
-// Error handler
 app.use((err, req, res, next) => {
-  res.status(500).json({ error: "Something went wrong. Please try again." });
+  if (NODE_ENV === "development") {
+    console.error("Error:", err);
+  }
+
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    return res.status(400).json({ error: "Invalid JSON in request body." });
+  }
+
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request payload too large." });
+  }
+
+  res.status(err.status || 500).json({
+    error:
+      NODE_ENV === "production"
+        ? "Something went wrong. Please try again."
+        : err.message || "Internal server error",
+  });
 });
 
-// Start server - listen on all network interfaces for mobile access
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🐦 MockingBird API running on port ${PORT} (${NODE_ENV})`);
 });
 
 module.exports = app;
