@@ -66,6 +66,9 @@ export const SARCASM_MODES: ModeConfig[] = [
 export const MAX_INPUT_LENGTH = 500;
 export const MAX_HISTORY_ITEMS = 10;
 
+// Primary accent color used across all active states
+export const PRIMARY_ACCENT = "#8B5CF6";
+
 // Theme colors
 export const COLORS = {
   // Background colors
@@ -79,8 +82,8 @@ export const COLORS = {
   textMuted: "#6c6c7c",
 
   // Accent colors
-  accent: "#9B59B6",
-  accentLight: "#BB8FCE",
+  accent: "#8B5CF6",
+  accentLight: "#A78BFA",
 
   // Mode-specific colors
   modeLight: "#4A90D9",

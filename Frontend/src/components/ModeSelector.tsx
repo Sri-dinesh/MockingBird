@@ -1,7 +1,13 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SarcasmMode, ModeConfig } from "../types";
-import { SARCASM_MODES, COLORS, SPACING, BORDER_RADIUS } from "../constants";
+import {
+  SARCASM_MODES,
+  COLORS,
+  SPACING,
+  BORDER_RADIUS,
+  PRIMARY_ACCENT,
+} from "../constants";
 import { useTranslationStore } from "../store";
 
 export function ModeSelector() {
@@ -9,18 +15,11 @@ export function ModeSelector() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Sarcasm Level</Text>
       <View style={styles.pillContainer}>
         {SARCASM_MODES.map((mode: ModeConfig) => (
           <TouchableOpacity
             key={mode.id}
-            style={[
-              styles.pill,
-              selectedMode === mode.id && {
-                backgroundColor: mode.color,
-                borderColor: mode.color,
-              },
-            ]}
+            style={[styles.pill, selectedMode === mode.id && styles.pillActive]}
             onPress={() => setSelectedMode(mode.id)}
             activeOpacity={0.7}>
             <Text style={styles.emoji}>{mode.emoji}</Text>
@@ -40,15 +39,7 @@ export function ModeSelector() {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: SPACING.lg,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.sm,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    marginBottom: SPACING.md,
   },
   pillContainer: {
     flexDirection: "row",
@@ -59,19 +50,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.surface,
     borderWidth: 2,
     borderColor: COLORS.border,
     gap: SPACING.xs,
   },
+  pillActive: {
+    backgroundColor: PRIMARY_ACCENT,
+    borderColor: PRIMARY_ACCENT,
+  },
   emoji: {
-    fontSize: 16,
+    fontSize: 14,
   },
   pillText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: COLORS.textSecondary,
   },

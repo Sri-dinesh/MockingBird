@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Intent } from "../types";
-import { COLORS, SPACING, BORDER_RADIUS } from "../constants";
+import { COLORS, SPACING, BORDER_RADIUS, PRIMARY_ACCENT } from "../constants";
 import { useTranslationStore } from "../store";
 
 const INTENT_OPTIONS: { id: Intent; label: string; emoji: string }[] = [
@@ -14,7 +14,6 @@ export function IntentToggle() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Intent</Text>
       <View style={styles.toggleContainer}>
         {INTENT_OPTIONS.map((option) => (
           <TouchableOpacity
@@ -42,15 +41,7 @@ export function IntentToggle() {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: SPACING.md,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
     marginBottom: SPACING.sm,
-    textTransform: "uppercase",
-    letterSpacing: 1,
   },
   toggleContainer: {
     flexDirection: "row",
@@ -71,7 +62,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   toggleOptionActive: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: PRIMARY_ACCENT,
   },
   emoji: {
     fontSize: 16,

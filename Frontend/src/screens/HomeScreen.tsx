@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import {
   SPACING,
   BORDER_RADIUS,
   MAX_INPUT_LENGTH,
-  getModeConfig,
+  PRIMARY_ACCENT,
 } from "../constants";
 import { useTranslationStore, useHistoryStore } from "../store";
 import { translateText } from "../services/api";
@@ -28,6 +28,7 @@ const MAX_CONTEXT_LENGTH = 200;
 
 export function HomeScreen() {
   const router = useRouter();
+  const [showContext, setShowContext] = useState(false);
   const {
     inputText,
     setInputText,
@@ -48,7 +49,6 @@ export function HomeScreen() {
 
   const { addItem } = useHistoryStore();
 
-  const modeConfig = getModeConfig(selectedMode);
   const canTranslate = inputText.trim().length > 0 && !isLoading;
 
   // Dynamic placeholder based on intent
@@ -168,14 +168,6 @@ export function HomeScreen() {
 
           {/* Input Section */}
           <View style={styles.inputSection}>
-            <View style={styles.inputHeader}>
-              <Text style={styles.inputLabel}>
-                {intent === "reply" ? "Their Text" : "Your Text"}
-              </Text>
-              <Text style={styles.charCount}>
-                {inputText.length}/{MAX_INPUT_LENGTH}
-              </Text>
-            </View>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.textInput}
@@ -199,39 +191,53 @@ export function HomeScreen() {
                   />
                 </TouchableOpacity>
               )}
+              <Text style={styles.charCount}>
+                {inputText.length}/{MAX_INPUT_LENGTH}
+              </Text>
             </View>
           </View>
 
-          {/* Context Input (Optional) */}
-          <View style={styles.contextSection}>
-            <View style={styles.inputHeader}>
-              <View style={styles.contextLabelContainer}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color={COLORS.textMuted}
+          {/* Context Toggle & Input (Collapsible) */}
+          {!showContext ? (
+            <TouchableOpacity
+              style={styles.addContextButton}
+              onPress={() => setShowContext(true)}
+              activeOpacity={0.7}>
+              <Ionicons
+                name="add-circle-outline"
+                size={18}
+                color={COLORS.accent}
+              />
+              <Text style={styles.addContextText}>Add Context</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.contextSection}>
+              <View style={styles.contextHeader}>
+                <TextInput
+                  style={styles.contextInput}
+                  value={contextText}
+                  onChangeText={setContextText}
+                  placeholder="e.g., 'My friend is late again'"
+                  placeholderTextColor={COLORS.textMuted}
+                  maxLength={MAX_CONTEXT_LENGTH}
                 />
-                <Text style={styles.contextLabel}>Context (Optional)</Text>
+                <TouchableOpacity
+                  style={styles.contextCloseButton}
+                  onPress={() => {
+                    setShowContext(false);
+                    setContextText("");
+                  }}
+                  activeOpacity={0.7}>
+                  <Ionicons name="close" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </View>
-              <Text style={styles.charCount}>
-                {contextText.length}/{MAX_CONTEXT_LENGTH}
-              </Text>
             </View>
-            <TextInput
-              style={styles.contextInput}
-              value={contextText}
-              onChangeText={setContextText}
-              placeholder="e.g., 'My friend is late again'"
-              placeholderTextColor={COLORS.textMuted}
-              maxLength={MAX_CONTEXT_LENGTH}
-            />
-          </View>
+          )}
 
           {/* Translate Button */}
           <TouchableOpacity
             style={[
               styles.translateButton,
-              { backgroundColor: modeConfig.color },
               !canTranslate && styles.translateButtonDisabled,
             ]}
             onPress={handleTranslate}
@@ -240,11 +246,7 @@ export function HomeScreen() {
             {isLoading ? (
               <Text style={styles.translateButtonText}>Translating...</Text>
             ) : (
-              <>
-                <Text style={styles.translateButtonText}>
-                  Translate {modeConfig.emoji}
-                </Text>
-              </>
+              <Text style={styles.translateButtonText}>Translate ✨</Text>
             )}
           </TouchableOpacity>
 
@@ -304,24 +306,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xxl,
   },
   inputSection: {
-    marginBottom: SPACING.md,
-  },
-  inputHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: SPACING.sm,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  charCount: {
-    fontSize: 12,
-    color: COLORS.textMuted,
   },
   inputContainer: {
     position: "relative",
@@ -331,7 +316,8 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     paddingRight: 44,
-    minHeight: 120,
+    paddingBottom: SPACING.xl,
+    minHeight: 100,
     fontSize: 16,
     color: COLORS.textPrimary,
     borderWidth: 1,
@@ -343,30 +329,45 @@ const styles = StyleSheet.create({
     right: SPACING.md,
     padding: SPACING.xs,
   },
-  contextSection: {
-    marginBottom: SPACING.lg,
+  charCount: {
+    position: "absolute",
+    bottom: SPACING.sm,
+    right: SPACING.md,
+    fontSize: 11,
+    color: COLORS.textMuted,
   },
-  contextLabelContainer: {
+  addContextButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.xs,
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.xs,
   },
-  contextLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  addContextText: {
+    fontSize: 14,
+    color: COLORS.accent,
+    fontWeight: "500",
+  },
+  contextSection: {
+    marginBottom: SPACING.md,
+  },
+  contextHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
   },
   contextInput: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    flex: 1,
+    backgroundColor: "transparent",
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: 0,
     fontSize: 14,
     color: COLORS.textPrimary,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  contextCloseButton: {
+    padding: SPACING.xs,
   },
   translateButton: {
     flexDirection: "row",
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
     marginBottom: SPACING.lg,
-    gap: SPACING.sm,
+    backgroundColor: PRIMARY_ACCENT,
   },
   translateButtonDisabled: {
     opacity: 0.5,
