@@ -1,5 +1,8 @@
 // Sarcasm mode types
-export type SarcasmMode = "light" | "savage" | "toxic";
+export type SarcasmMode = "corporate" | "light" | "savage" | "toxic";
+
+// Intent types - rewrite your thought or reply to someone
+export type Intent = "rewrite" | "reply";
 
 // Translation history item
 export interface HistoryItem {
@@ -7,6 +10,8 @@ export interface HistoryItem {
   original: string;
   translated: string;
   mode: SarcasmMode;
+  intent: Intent;
+  context?: string;
   timestamp: number;
 }
 
@@ -14,6 +19,8 @@ export interface HistoryItem {
 export interface TranslateRequest {
   text: string;
   mode: SarcasmMode;
+  intent: Intent;
+  context?: string;
 }
 
 export interface TranslateResponse {

@@ -42,6 +42,7 @@ interface HistoryItemCardProps {
 
 function HistoryItemCard({ item, onDelete }: HistoryItemCardProps) {
   const modeConfig = getModeConfig(item.mode);
+  const intentLabel = item.intent === "reply" ? "↩️" : "🗣️";
 
   const handleDelete = () => {
     Alert.alert(
@@ -61,17 +62,35 @@ function HistoryItemCard({ item, onDelete }: HistoryItemCardProps) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={[styles.modeBadge, { backgroundColor: modeConfig.color }]}>
-          <Text style={styles.modeBadgeText}>
-            {modeConfig.emoji} {modeConfig.label}
-          </Text>
+        <View style={styles.badgeContainer}>
+          <View
+            style={[styles.modeBadge, { backgroundColor: modeConfig.color }]}>
+            <Text style={styles.modeBadgeText}>
+              {modeConfig.emoji} {modeConfig.label}
+            </Text>
+          </View>
+          <View style={styles.intentBadge}>
+            <Text style={styles.intentBadgeText}>{intentLabel}</Text>
+          </View>
         </View>
         <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
       </View>
       <View style={styles.cardContent}>
-        <Text style={styles.originalLabel}>Original:</Text>
+        <Text style={styles.originalLabel}>
+          {item.intent === "reply" ? "Received:" : "Original:"}
+        </Text>
         <Text style={styles.originalText}>{truncateText(item.original)}</Text>
-        <Text style={styles.translatedLabel}>Translated:</Text>
+        {item.context && (
+          <>
+            <Text style={styles.contextLabel}>Context:</Text>
+            <Text style={styles.contextText}>
+              {truncateText(item.context, 50)}
+            </Text>
+          </>
+        )}
+        <Text style={styles.translatedLabel}>
+          {item.intent === "reply" ? "Reply:" : "Translated:"}
+        </Text>
         <Text style={styles.translatedText}>
           {truncateText(item.translated, 100)}
         </Text>
@@ -248,6 +267,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.textPrimary,
   },
+  badgeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+  },
+  intentBadge: {
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.surfaceLight,
+  },
+  intentBadgeText: {
+    fontSize: 12,
+  },
   timestamp: {
     fontSize: 12,
     color: COLORS.textMuted,
@@ -263,6 +296,17 @@ const styles = StyleSheet.create({
   originalText: {
     fontSize: 14,
     color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  contextLabel: {
+    fontSize: 12,
+    color: COLORS.accent,
+    fontWeight: "500",
+  },
+  contextText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontStyle: "italic",
     marginBottom: SPACING.sm,
   },
   translatedLabel: {

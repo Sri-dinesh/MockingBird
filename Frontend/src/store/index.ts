@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { SarcasmMode, HistoryItem } from "../types";
+import { SarcasmMode, HistoryItem, Intent } from "../types";
 import {
   getHistory,
   saveHistoryItem,
@@ -12,6 +12,14 @@ interface TranslationState {
   inputText: string;
   setInputText: (text: string) => void;
   clearInput: () => void;
+
+  // Context state (optional background info)
+  contextText: string;
+  setContextText: (text: string) => void;
+
+  // Intent state (rewrite vs reply)
+  intent: Intent;
+  setIntent: (intent: Intent) => void;
 
   // Mode state
   selectedMode: SarcasmMode;
@@ -27,10 +35,17 @@ interface TranslationState {
 
   // Cache for API optimization
   translationCache: Map<string, string>;
-  getCachedTranslation: (text: string, mode: SarcasmMode) => string | undefined;
+  getCachedTranslation: (
+    text: string,
+    mode: SarcasmMode,
+    intent: Intent,
+    context: string
+  ) => string | undefined;
   setCachedTranslation: (
     text: string,
     mode: SarcasmMode,
+    intent: Intent,
+    context: string,
     result: string
   ) => void;
 }
@@ -48,8 +63,15 @@ interface HistoryState {
 }
 
 // Generate cache key for translation
-const getCacheKey = (text: string, mode: SarcasmMode): string => {
-  return `${mode}:${text.trim().toLowerCase()}`;
+const getCacheKey = (
+  text: string,
+  mode: SarcasmMode,
+  intent: Intent,
+  context: string
+): string => {
+  return `${mode}:${intent}:${context.trim().toLowerCase()}:${text
+    .trim()
+    .toLowerCase()}`;
 };
 
 // Translation store
@@ -57,7 +79,16 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   // Input state
   inputText: "",
   setInputText: (text: string) => set({ inputText: text, error: null }),
-  clearInput: () => set({ inputText: "", translatedText: "", error: null }),
+  clearInput: () =>
+    set({ inputText: "", contextText: "", translatedText: "", error: null }),
+
+  // Context state
+  contextText: "",
+  setContextText: (text: string) => set({ contextText: text }),
+
+  // Intent state
+  intent: "rewrite",
+  setIntent: (intent: Intent) => set({ intent }),
 
   // Mode state
   selectedMode: "light",
@@ -73,12 +104,23 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
 
   // Cache for API optimization
   translationCache: new Map<string, string>(),
-  getCachedTranslation: (text: string, mode: SarcasmMode) => {
-    const key = getCacheKey(text, mode);
+  getCachedTranslation: (
+    text: string,
+    mode: SarcasmMode,
+    intent: Intent,
+    context: string
+  ) => {
+    const key = getCacheKey(text, mode, intent, context);
     return get().translationCache.get(key);
   },
-  setCachedTranslation: (text: string, mode: SarcasmMode, result: string) => {
-    const key = getCacheKey(text, mode);
+  setCachedTranslation: (
+    text: string,
+    mode: SarcasmMode,
+    intent: Intent,
+    context: string,
+    result: string
+  ) => {
+    const key = getCacheKey(text, mode, intent, context);
     const newCache = new Map(get().translationCache);
     newCache.set(key, result);
 

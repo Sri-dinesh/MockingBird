@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { ModeSelector, OutputCard } from "../components";
+import { ModeSelector, OutputCard, IntentToggle } from "../components";
 import {
   COLORS,
   SPACING,
@@ -24,12 +24,17 @@ import {
 import { useTranslationStore, useHistoryStore } from "../store";
 import { translateText } from "../services/api";
 
+const MAX_CONTEXT_LENGTH = 200;
+
 export function HomeScreen() {
   const router = useRouter();
   const {
     inputText,
     setInputText,
     clearInput,
+    contextText,
+    setContextText,
+    intent,
     selectedMode,
     translatedText,
     setTranslatedText,
@@ -46,12 +51,24 @@ export function HomeScreen() {
   const modeConfig = getModeConfig(selectedMode);
   const canTranslate = inputText.trim().length > 0 && !isLoading;
 
+  // Dynamic placeholder based on intent
+  const inputPlaceholder =
+    intent === "reply"
+      ? "Paste the text you received..."
+      : "Type what you want to say...";
+
   const handleTranslate = useCallback(async () => {
     const trimmedText = inputText.trim();
+    const trimmedContext = contextText.trim();
     if (!trimmedText || isLoading) return;
 
     // Check cache first for API optimization
-    const cached = getCachedTranslation(trimmedText, selectedMode);
+    const cached = getCachedTranslation(
+      trimmedText,
+      selectedMode,
+      intent,
+      trimmedContext
+    );
     if (cached) {
       setTranslatedText(cached);
       return;
@@ -61,17 +78,30 @@ export function HomeScreen() {
     setIsLoading(true);
 
     try {
-      const result = await translateText(trimmedText, selectedMode);
+      const result = await translateText(
+        trimmedText,
+        selectedMode,
+        intent,
+        trimmedContext || undefined
+      );
       setTranslatedText(result.translated);
 
       // Cache the result
-      setCachedTranslation(trimmedText, selectedMode, result.translated);
+      setCachedTranslation(
+        trimmedText,
+        selectedMode,
+        intent,
+        trimmedContext,
+        result.translated
+      );
 
       // Save to history
       await addItem({
         original: result.original,
         translated: result.translated,
         mode: selectedMode,
+        intent: intent,
+        context: trimmedContext || undefined,
       });
     } catch (err) {
       const errorMessage =
@@ -83,6 +113,8 @@ export function HomeScreen() {
     }
   }, [
     inputText,
+    contextText,
+    intent,
     selectedMode,
     isLoading,
     getCachedTranslation,
@@ -128,13 +160,18 @@ export function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
+          {/* Intent Toggle - Top of screen */}
+          <IntentToggle />
+
           {/* Mode Selector */}
           <ModeSelector />
 
           {/* Input Section */}
           <View style={styles.inputSection}>
             <View style={styles.inputHeader}>
-              <Text style={styles.inputLabel}>Your Text</Text>
+              <Text style={styles.inputLabel}>
+                {intent === "reply" ? "Their Text" : "Your Text"}
+              </Text>
               <Text style={styles.charCount}>
                 {inputText.length}/{MAX_INPUT_LENGTH}
               </Text>
@@ -144,7 +181,7 @@ export function HomeScreen() {
                 style={styles.textInput}
                 value={inputText}
                 onChangeText={setInputText}
-                placeholder="Type something boring here..."
+                placeholder={inputPlaceholder}
                 placeholderTextColor={COLORS.textMuted}
                 multiline
                 maxLength={MAX_INPUT_LENGTH}
@@ -163,6 +200,31 @@ export function HomeScreen() {
                 </TouchableOpacity>
               )}
             </View>
+          </View>
+
+          {/* Context Input (Optional) */}
+          <View style={styles.contextSection}>
+            <View style={styles.inputHeader}>
+              <View style={styles.contextLabelContainer}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={COLORS.textMuted}
+                />
+                <Text style={styles.contextLabel}>Context (Optional)</Text>
+              </View>
+              <Text style={styles.charCount}>
+                {contextText.length}/{MAX_CONTEXT_LENGTH}
+              </Text>
+            </View>
+            <TextInput
+              style={styles.contextInput}
+              value={contextText}
+              onChangeText={setContextText}
+              placeholder="e.g., 'My friend is late again'"
+              placeholderTextColor={COLORS.textMuted}
+              maxLength={MAX_CONTEXT_LENGTH}
+            />
           </View>
 
           {/* Translate Button */}
@@ -242,7 +304,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xxl,
   },
   inputSection: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   inputHeader: {
     flexDirection: "row",
@@ -280,6 +342,31 @@ const styles = StyleSheet.create({
     top: SPACING.md,
     right: SPACING.md,
     padding: SPACING.xs,
+  },
+  contextSection: {
+    marginBottom: SPACING.lg,
+  },
+  contextLabelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+  },
+  contextLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  contextInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   translateButton: {
     flexDirection: "row",

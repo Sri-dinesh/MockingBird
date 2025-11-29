@@ -33,23 +33,30 @@ export const API_BASE_URL = getApiUrl();
 // Sarcasm mode configurations
 export const SARCASM_MODES: ModeConfig[] = [
   {
+    id: "corporate",
+    label: "Corp",
+    emoji: "👔",
+    color: "#3498DB",
+    activeColor: "#2980B9",
+  },
+  {
     id: "light",
     label: "Light",
-    emoji: "😏",
+    emoji: "🐥",
     color: "#4A90D9",
     activeColor: "#3A7BC8",
   },
   {
     id: "savage",
     label: "Savage",
-    emoji: "🔥",
+    emoji: "🦁",
     color: "#9B59B6",
     activeColor: "#8E44AD",
   },
   {
     id: "toxic",
     label: "Toxic",
-    emoji: "☠️",
+    emoji: "☢️",
     color: "#E74C3C",
     activeColor: "#C0392B",
   },
