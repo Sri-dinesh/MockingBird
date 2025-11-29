@@ -7,10 +7,17 @@ import {
   FlatList,
   Alert,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS, SPACING, BORDER_RADIUS, getModeConfig } from "../constants";
+import {
+  COLORS,
+  SPACING,
+  BORDER_RADIUS,
+  getModeConfig,
+  PRIMARY_ACCENT,
+} from "../constants";
 import { useHistoryStore } from "../store";
 import { HistoryItem } from "../types";
 
@@ -30,17 +37,13 @@ function formatTimestamp(timestamp: number): string {
   return date.toLocaleDateString();
 }
 
-function truncateText(text: string, maxLength: number = 50): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength).trim() + "...";
-}
-
 interface HistoryItemCardProps {
   item: HistoryItem;
   onDelete: (id: string) => void;
+  onCopy: (text: string) => void;
 }
 
-function HistoryItemCard({ item, onDelete }: HistoryItemCardProps) {
+function HistoryItemCard({ item, onDelete, onCopy }: HistoryItemCardProps) {
   const modeConfig = getModeConfig(item.mode);
   const intentLabel = item.intent === "reply" ? "↩️" : "🗣️";
 
@@ -59,12 +62,15 @@ function HistoryItemCard({ item, onDelete }: HistoryItemCardProps) {
     );
   };
 
+  const handleCopy = () => {
+    onCopy(item.translated);
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.badgeContainer}>
-          <View
-            style={[styles.modeBadge, { backgroundColor: modeConfig.color }]}>
+          <View style={[styles.modeBadge, { backgroundColor: PRIMARY_ACCENT }]}>
             <Text style={styles.modeBadgeText}>
               {modeConfig.emoji} {modeConfig.label}
             </Text>
@@ -73,34 +79,37 @@ function HistoryItemCard({ item, onDelete }: HistoryItemCardProps) {
             <Text style={styles.intentBadgeText}>{intentLabel}</Text>
           </View>
         </View>
-        <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+        <View style={styles.headerActions}>
+          <Text style={styles.timestamp}>
+            {formatTimestamp(item.timestamp)}
+          </Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleCopy}
+            activeOpacity={0.7}>
+            <Ionicons name="copy-outline" size={16} color={COLORS.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleDelete}
+            activeOpacity={0.7}>
+            <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={styles.cardContent}>
-        <Text style={styles.originalLabel}>
-          {item.intent === "reply" ? "Received:" : "Original:"}
+        <Text style={styles.originalText} numberOfLines={1}>
+          {item.original}
         </Text>
-        <Text style={styles.originalText}>{truncateText(item.original)}</Text>
         {item.context && (
-          <>
-            <Text style={styles.contextLabel}>Context:</Text>
-            <Text style={styles.contextText}>
-              {truncateText(item.context, 50)}
-            </Text>
-          </>
+          <Text style={styles.contextText} numberOfLines={1}>
+            💡 {item.context}
+          </Text>
         )}
-        <Text style={styles.translatedLabel}>
-          {item.intent === "reply" ? "Reply:" : "Translated:"}
-        </Text>
-        <Text style={styles.translatedText}>
-          {truncateText(item.translated, 100)}
+        <Text style={styles.translatedText} numberOfLines={3}>
+          {item.translated}
         </Text>
       </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={handleDelete}
-        activeOpacity={0.7}>
-        <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -131,8 +140,13 @@ export function HistoryScreen() {
     );
   };
 
+  const handleCopy = async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    Alert.alert("Copied!", "Text copied to clipboard");
+  };
+
   const renderItem = ({ item }: { item: HistoryItem }) => (
-    <HistoryItemCard item={item} onDelete={removeItem} />
+    <HistoryItemCard item={item} onDelete={removeItem} onCopy={handleCopy} />
   );
 
   const renderEmptyState = () => (
@@ -263,7 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.sm,
   },
   modeBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: COLORS.textPrimary,
   },
@@ -279,50 +293,39 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceLight,
   },
   intentBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
   },
   timestamp: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textMuted,
+    marginRight: SPACING.xs,
+  },
+  actionButton: {
+    padding: SPACING.xs,
   },
   cardContent: {
     gap: SPACING.xs,
   },
-  originalLabel: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontWeight: "500",
-  },
   originalText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.sm,
-  },
-  contextLabel: {
-    fontSize: 12,
-    color: COLORS.accent,
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#9CA3AF",
+    lineHeight: 18,
   },
   contextText: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    fontStyle: "italic",
-    marginBottom: SPACING.sm,
-  },
-  translatedLabel: {
     fontSize: 12,
     color: COLORS.textMuted,
-    fontWeight: "500",
+    fontStyle: "italic",
   },
   translatedText: {
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.textPrimary,
-  },
-  deleteButton: {
-    position: "absolute",
-    bottom: SPACING.md,
-    right: SPACING.md,
-    padding: SPACING.xs,
+    lineHeight: 22,
+    marginTop: SPACING.xs,
   },
   emptyState: {
     flex: 1,
