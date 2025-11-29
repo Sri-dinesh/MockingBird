@@ -9,7 +9,9 @@ const router = express.Router();
 
 const MAX_TEXT_LENGTH = 500;
 const MIN_TEXT_LENGTH = 2;
-const VALID_MODES = new Set(["light", "savage", "toxic"]);
+const MAX_CONTEXT_LENGTH = 200;
+const VALID_MODES = new Set(["corporate", "light", "savage", "toxic"]);
+const VALID_INTENTS = new Set(["rewrite", "reply"]);
 
 const ONLY_WHITESPACE_REGEX = /^\s*$/;
 const EXCESSIVE_REPEATS_REGEX = /(.)\1{20,}/;
@@ -21,10 +23,10 @@ const EXCESSIVE_REPEATS_REGEX = /(.)\1{20,}/;
 /**
  * Validates and sanitizes the request body
  * @param {Object} body - Request body
- * @returns {{ valid: boolean, error?: string, text?: string, mode?: string }}
+ * @returns {{ valid: boolean, error?: string, text?: string, mode?: string, intent?: string, context?: string }}
  */
 function validateRequest(body) {
-  const { text, mode = "light" } = body || {};
+  const { text, mode = "light", intent = "rewrite", context = "" } = body || {};
 
   if (!text || typeof text !== "string") {
     return { valid: false, error: "Text is required and must be a string." };
@@ -62,11 +64,35 @@ function validateRequest(body) {
   if (!VALID_MODES.has(normalizedMode)) {
     return {
       valid: false,
-      error: "Invalid mode. Must be one of: light, savage, toxic.",
+      error: "Invalid mode. Must be one of: corporate, light, savage, toxic.",
     };
   }
 
-  return { valid: true, text: trimmedText, mode: normalizedMode };
+  const normalizedIntent =
+    typeof intent === "string" ? intent.toLowerCase() : "rewrite";
+  if (!VALID_INTENTS.has(normalizedIntent)) {
+    return {
+      valid: false,
+      error: "Invalid intent. Must be one of: rewrite, reply.",
+    };
+  }
+
+  // Validate context (optional)
+  const trimmedContext = typeof context === "string" ? context.trim() : "";
+  if (trimmedContext.length > MAX_CONTEXT_LENGTH) {
+    return {
+      valid: false,
+      error: `Context must be ${MAX_CONTEXT_LENGTH} characters or less.`,
+    };
+  }
+
+  return {
+    valid: true,
+    text: trimmedText,
+    mode: normalizedMode,
+    intent: normalizedIntent,
+    context: trimmedContext,
+  };
 }
 
 // ============================================================================
@@ -87,9 +113,9 @@ router.post("/translate", async (req, res) => {
       return res.status(400).json({ error: validation.error });
     }
 
-    const { text, mode } = validation;
+    const { text, mode, intent, context } = validation;
 
-    const translated = await translateToSarcasm(text, mode);
+    const translated = await translateToSarcasm(text, mode, intent, context);
 
     const responseTime = Date.now() - startTime;
 
@@ -97,6 +123,8 @@ router.post("/translate", async (req, res) => {
       original: text,
       translated,
       mode,
+      intent,
+      context: context || undefined,
       meta: {
         responseTime: `${responseTime}ms`,
       },
@@ -136,6 +164,11 @@ router.get("/health", (req, res) => {
 router.get("/modes", (req, res) => {
   res.json({
     modes: [
+      {
+        id: "corporate",
+        name: "Corporate",
+        description: "Polite, passive-aggressive office speak",
+      },
       { id: "light", name: "Light", description: "Playful and gently teasing" },
       {
         id: "savage",

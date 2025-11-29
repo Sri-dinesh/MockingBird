@@ -4,6 +4,7 @@ import {
   TranslateResponse,
   ApiError,
   SarcasmMode,
+  Intent,
 } from "../types";
 import { API_BASE_URL } from "../constants";
 
@@ -21,13 +22,26 @@ const apiClient = axios.create({
  */
 export async function translateText(
   text: string,
-  mode: SarcasmMode
+  mode: SarcasmMode,
+  intent: Intent = "rewrite",
+  context?: string
 ): Promise<TranslateResponse> {
   try {
-    const response = await apiClient.post<TranslateResponse>("/api/translate", {
+    const requestBody: TranslateRequest = {
       text,
       mode,
-    } as TranslateRequest);
+      intent,
+    };
+
+    // Only include context if provided
+    if (context && context.trim()) {
+      requestBody.context = context.trim();
+    }
+
+    const response = await apiClient.post<TranslateResponse>(
+      "/api/translate",
+      requestBody
+    );
 
     return response.data;
   } catch (error) {

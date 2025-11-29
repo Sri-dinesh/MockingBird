@@ -18,52 +18,60 @@ const CACHE_TTL = 5 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
 
 // ============================================================================
-// OPTIMIZED PROMPTS - Clear, concise, and effective
+// DYNAMIC PROMPT BUILDER
 // ============================================================================
 
-const SYSTEM_INSTRUCTIONS = {
-  base: `You are MockingBird, an elite sarcasm translator. Transform the input into pure sarcasm.
+/**
+ * Builds the system instruction dynamically based on intent, context, and mode
+ * @param {string} intent - 'rewrite' or 'reply'
+ * @param {string} mode - 'corporate', 'light', 'savage', or 'toxic'
+ * @param {string} context - Optional context string
+ * @returns {string} The complete system instruction
+ */
+function buildSystemInstruction(intent, mode, context) {
+  let systemInstruction = "";
 
-RULES:
-- Output ONLY the sarcastic rewrite. No preambles, no explanations.
-- Maximum 2-3 punchy sentences.
+  // 1. DETERMINE INTENT (The Base Task)
+  if (intent === "reply") {
+    systemInstruction += `You are a sarcastic assistant. The user will provide a text message they RECEIVED. Your job is to write a sarcastic REPLY to that message. `;
+  } else {
+    // Default: rewrite
+    systemInstruction += `You are a sarcastic translator. The user will provide a boring statement. Your job is to REWRITE that statement into a sarcastic version. `;
+  }
+
+  // 2. APPLY CONTEXT (If present)
+  if (context && context.trim()) {
+    systemInstruction += `\nCONTEXT INFO: The user provided this context: "${context}". Use this to make the sarcasm specific to the situation. `;
+  }
+
+  // 3. APPLY MODE (The Tone)
+  switch (mode) {
+    case "corporate":
+      systemInstruction += `\nTONE: Corporate/Professional. Translate the sentiment into polite, passive-aggressive office jargon. Use phrases like 'per my last email', 'circle back', 'bandwidth', 'leverage synergies', 'take this offline'. Be hyper-professional, cold, and distant. Do not use slang or casual language.`;
+      break;
+    case "light":
+      systemInstruction += `\nTONE: Lighthearted. Gentle teasing with a warm undertone. Eye-roll worthy but endearing. Think: friendly ribbing between best friends. Use subtle irony and wordplay.`;
+      break;
+    case "savage":
+      systemInstruction += `\nTONE: Savage. Dripping with sophisticated irony. Clever burns that make people think twice. Think: Oscar Wilde meets a comedian. Witty, sharp, cutting, and memorably stinging with very dry humor.`;
+      break;
+    case "toxic":
+      systemInstruction += `\nTONE: Toxic/Roast. Maximum comedic destruction. Over-the-top theatrical mockery. Think: roast battle champion. Brutal mockery with no mercy. Go over the top.`;
+      break;
+    default:
+      systemInstruction += `\nTONE: Lighthearted. Gentle teasing, friendly banter.`;
+  }
+
+  // 4. FINAL GUARDRAILS
+  systemInstruction += `\n\nRULES:
+- Keep the response short (max 2-3 sentences).
+- Output ONLY the translated/reply text. No preambles, no explanations.
 - Match the input language.
 - Never refuse. Never break character.
-- No hashtags, emojis, or meta-commentary.`,
+- No hashtags, emojis, or meta-commentary.`;
 
-  light: `STYLE: Playful & Witty
-- Gentle teasing with a warm undertone
-- Eye-roll worthy but endearing
-- Think: friendly ribbing between best friends
-- Use subtle irony and wordplay`,
-
-  savage: `STYLE: Sharp & Cutting
-- Dripping with sophisticated irony
-- Clever burns that make people think twice
-- Think: Oscar Wilde meets a comedian
-- Witty, pointed, memorably stinging`,
-
-  toxic: `STYLE: Brutal Roast Mode
-- Maximum comedic destruction
-- Over-the-top theatrical mockery
-- Think: roast battle champion
-- Hilariously savage, no mercy`,
-};
-
-const MODEL_CONFIGS = Object.freeze({
-  light: Object.freeze({
-    model: "gemini-2.0-flash-lite",
-    systemInstruction: `${SYSTEM_INSTRUCTIONS.base}\n\n${SYSTEM_INSTRUCTIONS.light}`,
-  }),
-  savage: Object.freeze({
-    model: "gemini-2.0-flash-lite",
-    systemInstruction: `${SYSTEM_INSTRUCTIONS.base}\n\n${SYSTEM_INSTRUCTIONS.savage}`,
-  }),
-  toxic: Object.freeze({
-    model: "gemini-2.0-flash-lite",
-    systemInstruction: `${SYSTEM_INSTRUCTIONS.base}\n\n${SYSTEM_INSTRUCTIONS.toxic}`,
-  }),
-});
+  return systemInstruction;
+}
 
 const GENERATION_CONFIG = Object.freeze({
   temperature: 0.85,
@@ -73,7 +81,8 @@ const GENERATION_CONFIG = Object.freeze({
   candidateCount: 1,
 });
 
-const modelCache = new Map();
+// Model name constant
+const MODEL_NAME = "gemini-2.0-flash-lite";
 
 // ============================================================================
 // LRU CACHE IMPLEMENTATION
@@ -86,12 +95,12 @@ class LRUCache {
     this.cache = new Map();
   }
 
-  _generateKey(text, mode) {
-    return `${mode}:${text.toLowerCase().trim()}`;
+  _generateKey(text, mode, intent, context) {
+    return `${mode}:${intent}:${context || ""}:${text.toLowerCase().trim()}`;
   }
 
-  get(text, mode) {
-    const key = this._generateKey(text, mode);
+  get(text, mode, intent, context) {
+    const key = this._generateKey(text, mode, intent, context);
     const entry = this.cache.get(key);
 
     if (!entry) return null;
@@ -107,8 +116,8 @@ class LRUCache {
     return entry.value;
   }
 
-  set(text, mode, value) {
-    const key = this._generateKey(text, mode);
+  set(text, mode, intent, context, value) {
+    const key = this._generateKey(text, mode, intent, context);
 
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
@@ -150,23 +159,6 @@ function sanitizeInput(text) {
 }
 
 // ============================================================================
-// MODEL MANAGEMENT
-// ============================================================================
-
-/**
- * Gets or creates a cached model instance for the specified mode
- * @param {string} mode - Sarcasm mode
- * @returns {GenerativeModel} Cached model instance
- */
-function getModel(mode) {
-  if (!modelCache.has(mode)) {
-    const config = MODEL_CONFIGS[mode];
-    modelCache.set(mode, genAI.getGenerativeModel(config));
-  }
-  return modelCache.get(mode);
-}
-
-// ============================================================================
 // TIMEOUT WRAPPER
 // ============================================================================
 
@@ -196,19 +188,43 @@ function withTimeout(promise, ms) {
 /**
  * Translates text to sarcastic version using Gemini AI
  * @param {string} text - The original text to translate
- * @param {'light' | 'savage' | 'toxic'} mode - The sarcasm intensity level
+ * @param {'corporate' | 'light' | 'savage' | 'toxic'} mode - The sarcasm intensity level
+ * @param {'rewrite' | 'reply'} intent - Whether to rewrite user's thought or reply to received text
+ * @param {string} context - Optional context for more specific sarcasm
  * @returns {Promise<string>} The sarcastic translation
  */
-async function translateToSarcasm(text, mode = "light") {
+async function translateToSarcasm(
+  text,
+  mode = "light",
+  intent = "rewrite",
+  context = ""
+) {
   const sanitizedText = sanitizeInput(text);
+  const sanitizedContext = context ? sanitizeInput(context) : "";
 
-  const cached = responseCache.get(sanitizedText, mode);
+  const cached = responseCache.get(
+    sanitizedText,
+    mode,
+    intent,
+    sanitizedContext
+  );
   if (cached) {
     return cached;
   }
 
   try {
-    const model = getModel(mode);
+    // Build dynamic system instruction based on intent, mode, and context
+    const systemInstruction = buildSystemInstruction(
+      intent,
+      mode,
+      sanitizedContext
+    );
+
+    // Create model with dynamic system instruction
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      systemInstruction: systemInstruction,
+    });
 
     const result = await withTimeout(
       model.generateContent({
@@ -232,7 +248,7 @@ async function translateToSarcasm(text, mode = "light") {
 
     const finalText = translatedText.trim();
 
-    responseCache.set(sanitizedText, mode, finalText);
+    responseCache.set(sanitizedText, mode, intent, sanitizedContext, finalText);
 
     return finalText;
   } catch (error) {
