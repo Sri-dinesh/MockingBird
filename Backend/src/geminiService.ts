@@ -1,10 +1,6 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// ============================================================================
-// CONFIGURATION & CONSTANTS
-// ============================================================================
-
-const API_KEY = process.env.GEMINI_API_KEY;
+const API_KEY = Bun.env.GEMINI_API_KEY;
 if (!API_KEY) {
   console.error("FATAL: GEMINI_API_KEY environment variable is not set");
   process.exit(1);
@@ -17,34 +13,30 @@ const API_TIMEOUT = 10000;
 const CACHE_TTL = 5 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
 
-// ============================================================================
-// DYNAMIC PROMPT BUILDER
-// ============================================================================
+type SarcasmMode = "corporate" | "light" | "savage" | "toxic";
+type Intent = "rewrite" | "reply";
 
-/**
- * Builds the system instruction dynamically based on intent, context, and mode
- * @param {string} intent - 'rewrite' or 'reply'
- * @param {string} mode - 'corporate', 'light', 'savage', or 'toxic'
- * @param {string} context - Optional context string
- * @returns {string} The complete system instruction
- */
-function buildSystemInstruction(intent, mode, context) {
+interface CacheEntry {
+  value: string;
+  timestamp: number;
+}
+
+function buildSystemInstruction(
+  intent: Intent,
+  mode: SarcasmMode,
+  context: string,
+): string {
   let systemInstruction = "";
 
-  // 1. DETERMINE INTENT (The Base Task)
   if (intent === "reply") {
     systemInstruction += `You are a sarcastic assistant. The user will provide a text message they RECEIVED. Your job is to write a sarcastic REPLY to that message. `;
   } else {
-    // Default: rewrite
     systemInstruction += `You are a sarcastic translator. The user will provide a boring statement. Your job is to REWRITE that statement into a sarcastic version. `;
   }
 
-  // 2. APPLY CONTEXT (If present)
   if (context && context.trim()) {
     systemInstruction += `\nCONTEXT INFO: The user provided this context: "${context}". Use this to make the sarcasm specific to the situation. `;
   }
-
-  // 3. APPLY MODE (The Tone)
   switch (mode) {
     case "corporate":
       systemInstruction += `\nTONE: Corporate/Professional. Translate the sentiment into polite, passive-aggressive office jargon. Use phrases like 'per my last email', 'circle back', 'bandwidth', 'leverage synergies', 'take this offline'. Be hyper-professional, cold, and distant. Do not use slang or casual language.`;
@@ -62,7 +54,6 @@ function buildSystemInstruction(intent, mode, context) {
       systemInstruction += `\nTONE: Lighthearted. Gentle teasing, friendly banter.`;
   }
 
-  // 4. FINAL GUARDRAILS
   systemInstruction += `\n\nRULES:
 - Keep the response short (max 2-3 sentences).
 - Output ONLY the translated/reply text. No preambles, no explanations.
@@ -81,25 +72,34 @@ const GENERATION_CONFIG = Object.freeze({
   candidateCount: 1,
 });
 
-// Model name constant
 const MODEL_NAME = "gemini-2.0-flash-lite";
 
-// ============================================================================
-// LRU CACHE IMPLEMENTATION
-// ============================================================================
-
 class LRUCache {
-  constructor(maxSize, ttl) {
+  private maxSize: number;
+  private ttl: number;
+  private cache: Map<string, CacheEntry>;
+
+  constructor(maxSize: number, ttl: number) {
     this.maxSize = maxSize;
     this.ttl = ttl;
     this.cache = new Map();
   }
 
-  _generateKey(text, mode, intent, context) {
+  private _generateKey(
+    text: string,
+    mode: string,
+    intent: string,
+    context: string,
+  ): string {
     return `${mode}:${intent}:${context || ""}:${text.toLowerCase().trim()}`;
   }
 
-  get(text, mode, intent, context) {
+  get(
+    text: string,
+    mode: string,
+    intent: string,
+    context: string,
+  ): string | null {
     const key = this._generateKey(text, mode, intent, context);
     const entry = this.cache.get(key);
 
@@ -110,18 +110,27 @@ class LRUCache {
       return null;
     }
 
+    // Move to end (most recently used)
     this.cache.delete(key);
     this.cache.set(key, entry);
 
     return entry.value;
   }
 
-  set(text, mode, intent, context, value) {
+  set(
+    text: string,
+    mode: string,
+    intent: string,
+    context: string,
+    value: string,
+  ): void {
     const key = this._generateKey(text, mode, intent, context);
 
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
     }
 
     this.cache.set(key, {
@@ -130,27 +139,18 @@ class LRUCache {
     });
   }
 
-  clear() {
+  clear(): void {
     this.cache.clear();
   }
 
-  get size() {
+  get size(): number {
     return this.cache.size;
   }
 }
 
 const responseCache = new LRUCache(CACHE_MAX_SIZE, CACHE_TTL);
 
-// ============================================================================
-// INPUT SANITIZATION
-// ============================================================================
-
-/**
- * Sanitizes input text to prevent prompt injection and clean malformed input
- * @param {string} text - Raw input text
- * @returns {string} Sanitized text
- */
-function sanitizeInput(text) {
+function sanitizeInput(text: string): string {
   return text
     .replace(/\s+/g, " ")
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
@@ -158,19 +158,10 @@ function sanitizeInput(text) {
     .trim();
 }
 
-// ============================================================================
-// TIMEOUT WRAPPER
-// ============================================================================
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
 
-/**
- * Wraps a promise with a timeout
- * @param {Promise} promise - The promise to wrap
- * @param {number} ms - Timeout in milliseconds
- * @returns {Promise} Promise that rejects on timeout
- */
-function withTimeout(promise, ms) {
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
+  const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error("TIMEOUT"));
     }, ms);
@@ -181,24 +172,12 @@ function withTimeout(promise, ms) {
   });
 }
 
-// ============================================================================
-// MAIN TRANSLATION FUNCTION
-// ============================================================================
-
-/**
- * Translates text to sarcastic version using Gemini AI
- * @param {string} text - The original text to translate
- * @param {'corporate' | 'light' | 'savage' | 'toxic'} mode - The sarcasm intensity level
- * @param {'rewrite' | 'reply'} intent - Whether to rewrite user's thought or reply to received text
- * @param {string} context - Optional context for more specific sarcasm
- * @returns {Promise<string>} The sarcastic translation
- */
-async function translateToSarcasm(
-  text,
-  mode = "light",
-  intent = "rewrite",
-  context = ""
-) {
+export async function translateToSarcasm(
+  text: string,
+  mode: SarcasmMode = "light",
+  intent: Intent = "rewrite",
+  context: string = "",
+): Promise<string> {
   const sanitizedText = sanitizeInput(text);
   const sanitizedContext = context ? sanitizeInput(context) : "";
 
@@ -206,21 +185,19 @@ async function translateToSarcasm(
     sanitizedText,
     mode,
     intent,
-    sanitizedContext
+    sanitizedContext,
   );
   if (cached) {
     return cached;
   }
 
   try {
-    // Build dynamic system instruction based on intent, mode, and context
     const systemInstruction = buildSystemInstruction(
       intent,
       mode,
-      sanitizedContext
+      sanitizedContext,
     );
 
-    // Create model with dynamic system instruction
     const model = genAI.getGenerativeModel({
       model: MODEL_NAME,
       systemInstruction: systemInstruction,
@@ -231,7 +208,7 @@ async function translateToSarcasm(
         contents: [{ role: "user", parts: [{ text: sanitizedText }] }],
         generationConfig: GENERATION_CONFIG,
       }),
-      API_TIMEOUT
+      API_TIMEOUT,
     );
 
     const response = result.response;
@@ -252,17 +229,17 @@ async function translateToSarcasm(
 
     return finalText;
   } catch (error) {
-    const errorMap = {
+    const errorMap: Record<string, string> = {
       CONTENT_BLOCKED: "I can't roast that one. Try something different!",
       EMPTY_RESPONSE: "My wit failed me. Give it another shot!",
       TIMEOUT: "Taking too long! Try again in a moment.",
     };
 
-    if (errorMap[error.message]) {
+    if (error instanceof Error && errorMap[error.message]) {
       throw new Error(errorMap[error.message]);
     }
 
-    const statusErrors = {
+    const statusErrors: Record<number, string> = {
       429: "Whoa, slow down! Too much sarcasm. Try again shortly.",
       401: "Authentication error. Please contact support.",
       403: "Access denied. Please contact support.",
@@ -270,11 +247,12 @@ async function translateToSarcasm(
       503: "Service temporarily unavailable. Try again soon.",
     };
 
-    if (error.status && statusErrors[error.status]) {
-      throw new Error(statusErrors[error.status]);
+    const err = error as { status?: number; code?: string };
+    if (err.status && statusErrors[err.status]) {
+      throw new Error(statusErrors[err.status]);
     }
 
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+    if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND") {
       throw new Error("Network error. Check your connection and try again.");
     }
 
@@ -282,15 +260,13 @@ async function translateToSarcasm(
   }
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-module.exports = {
-  translateToSarcasm,
-  getStats: () => ({
+export function getStats(): { cacheSize: number; maxCacheSize: number } {
+  return {
     cacheSize: responseCache.size,
     maxCacheSize: CACHE_MAX_SIZE,
-  }),
-  clearCache: () => responseCache.clear(),
-};
+  };
+}
+
+export function clearCache(): void {
+  responseCache.clear();
+}

@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "src/server.js",
+      "src": "src/server.ts",
       "use": "@vercel/node",
       "config": {
         "maxLambdaSize": "10mb"
@@ -12,11 +12,11 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "src/server.js"
+      "dest": "src/server.ts"
     }
   ],
   "functions": {
-    "src/server.js": {
+    "src/server.ts": {
       "memory": 512,
       "maxDuration": 10
     }

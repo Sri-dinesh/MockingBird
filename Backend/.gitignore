@@ -1,6 +1,10 @@
 # Node modules directory
 node_modules
 
+# Bun
+bun.lockb
+.bun
+
 # Environment variables
 .env
 .env.local
